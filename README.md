@@ -159,9 +159,3 @@ Recupera el caso completo con su trazabilidad.
 - El chat contextual responde con una plantilla basada en los datos del caso; no consulta al modelo.
 - El catálogo de servicios es estático y de demostración.
 - El servicio Nominatim tiene límites de uso; si falla, se devuelve una ubicación simulada de respaldo.
-
-## Solución de problemas
-- **El puerto 3000 está ocupado:** inicia el backend con otro puerto (`PORT=3001`) y ajusta `VITE_API_URL` en `frontend/.env`.
-- **El análisis siempre dice "Movilidad":** falta `GEMINI_API_KEY` en `backend/.env`.
-- **El chat dice "Caso no encontrado":** el backend se reinició y el caso ya no está en memoria; envía el caso de nuevo.
-- **Error de CORS o red en el navegador:** verifica que el backend esté activo y que `VITE_API_URL` sea correcta; reinicia Vite tras cambiar `.env`.
