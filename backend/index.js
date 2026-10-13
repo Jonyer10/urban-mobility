@@ -36,6 +36,8 @@ app.post('/api/process-case', async (req, res) => {
       analysis: workflowResult.analysis,
       recommendations: workflowResult.recommendations,
       action_executed: workflowResult.action_result,
+      location: workflowResult.location || null,
+      services: workflowResult.services || [],
       trace_log: workflowResult.trace,
       createdAt: new Date()
     };
@@ -47,6 +49,8 @@ app.post('/api/process-case', async (req, res) => {
       analysis: newCase.analysis,
       recommendations: newCase.recommendations,
       action_result: newCase.action_executed,
+      location: newCase.location,
+      services: newCase.services,
       trace: newCase.trace_log
     });
 
@@ -67,7 +71,7 @@ app.post('/api/chat-contextual', async (req, res) => {
     }
 
     // Respuesta contextual basada estrictamente en la información verificada del caso (Fase 5)
-    const responseText = `Basado en el caso #${urbanCase.id} (${urbanCase.analysis.category}), la acción ejecutada fue: '${urbanCase.action_executed}'. Su consulta sobre "${question}" ha sido validada con los datos propios y herramientas del sistema[cite: 3, 5].`;
+    const responseText = `Basado en el caso #${urbanCase.id} (${urbanCase.analysis.category}), la acción ejecutada fue: '${urbanCase.action_executed}'. Su consulta sobre "${question}" ha sido validada con los datos propios y herramientas del sistema.`;
 
     return res.json({
       case_id: urbanCase.id,

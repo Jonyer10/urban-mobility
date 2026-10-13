@@ -11,10 +11,10 @@ class MultiAgentOrchestrator {
     const logTrace = (msg) => trace.push(msg);
 
     // --- AGENTE 1: Analista Multimodal ---
-    logTrace("Agente 1 (Analista Multimodal): Iniciando evaluación de texto e imagen[cite: 2, 4].");
+    logTrace("Agente 1 (Analista Multimodal): Iniciando evaluación de texto e imagen.");
 
     if (!userText || userText.trim().length < 5) {
-      logTrace("Agente 1: Información insuficiente detectada en el caso[cite: 2].");
+      logTrace("Agente 1: Información insuficiente detectada en el caso.");
       return {
         analysis: {
           category: "Desconocida",
@@ -69,29 +69,31 @@ class MultiAgentOrchestrator {
       console.warn("Aviso: No se pudo conectar con Gemini o parsear la respuesta, usando análisis por defecto:", modelError.message);
     }
 
-    logTrace(`Agente 1: Análisis estructurado completado con categoría '${analysisResult.category}'[cite: 2].`);
+    logTrace(`Agente 1: Análisis estructurado completado con categoría '${analysisResult.category}'.`);
 
     // --- AGENTE 2: Especialista de Ubicación, Herramientas y Solución ---
-    logTrace("Agente 2 (Especialista de Ubicación y Herramientas): Seleccionando y ejecutando herramientas[cite: 3, 4].");
+    logTrace("Agente 2 (Especialista de Ubicación y Herramientas): Seleccionando y ejecutando herramientas.");
 
     const localData = searchLocalServices(analysisResult.category);
-    logTrace(`Herramienta ejecutada: Consulta de base de datos propia de servicios urbanos[cite: 3]. Entidad: ${localData[0].name}`);
+    logTrace(`Herramienta ejecutada: Consulta de base de datos propia de servicios urbanos. Entidad: ${localData[0].name}`);
 
     const geoData = await getGeolocationData(originLocation);
-    logTrace(`Herramienta ejecutada: API Externa de Geolocalizacion consultada[cite: 3, 4]. Lat: ${geoData.lat}, Lon: ${geoData.lon}`);
+    logTrace(`Herramienta ejecutada: API Externa de Geolocalizacion consultada. Lat: ${geoData.lat}, Lon: ${geoData.lon}`);
 
     const recommendations = [
-      `Derivar la solicitud al recurso propio: ${localData[0].name} (Contacto: ${localData[0].contact})[cite: 3].`,
-      `Punto de referencia geolocalizado en: ${geoData.display_name}[cite: 3].`
+      `Derivar la solicitud al recurso propio: ${localData[0].name} (Contacto: ${localData[0].contact}).`,
+      `Punto de referencia geolocalizado en: ${geoData.display_name}.`
     ];
 
-    const actionResult = `Caso registrado formalmente en el sistema con prioridad ${analysisResult.urgency_level} y asignado a ${localData[0].name}[cite: 3].`;
-    logTrace(`Acción ejecutada: ${actionResult}[cite: 3]`);
+    const actionResult = `Caso registrado formalmente en el sistema con prioridad ${analysisResult.urgency_level} y asignado a ${localData[0].name}.`;
+    logTrace(`Acción ejecutada: ${actionResult}`);
 
     return {
       analysis: analysisResult,
       recommendations,
-      actionResult,
+      action_result: actionResult,
+      location: { lat: geoData.lat, lon: geoData.lon, display_name: geoData.display_name, source: geoData.source },
+      services: localData,
       trace
     };
   }
