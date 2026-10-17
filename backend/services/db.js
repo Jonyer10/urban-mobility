@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
+const { urbanDatabase, DEFAULT_SERVICES } = require('./localData');
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'urban.db');
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -64,13 +65,55 @@ db.exec(`
     tools_used TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_chat_case ON chat_messages (case_id);
+
+  -- Catálogo de servicios por categoría (espejo de services/localData.js)
+  CREATE TABLE IF NOT EXISTS services (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT,
+    contact TEXT,
+    lat REAL,
+    lon REAL,
+    UNIQUE (category, name)
+  );
 `);
+
+// Columna de categoría en las tablas de historial para consultarlas por categoría
+for (const table of ['trace_events', 'routes', 'chat_messages']) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  if (!cols.includes('category')) db.exec(`ALTER TABLE ${table} ADD COLUMN category TEXT`);
+}
+
+// Sincroniza el catálogo con localData.js
+{
+  db.exec('DELETE FROM services');
+  const insService = db.prepare('INSERT INTO services (category, name, status, contact, lat, lon) VALUES (?, ?, ?, ?, ?, ?)');
+  for (const [category, list] of Object.entries(urbanDatabase)) {
+    for (const s of list) insService.run(category, s.name, s.status ?? null, s.contact ?? null, s.lat ?? null, s.lon ?? null);
+  }
+  for (const s of DEFAULT_SERVICES) insService.run('general', s.name, s.status ?? null, s.contact ?? null, s.lat ?? null, s.lon ?? null);
+}
 
 // Columnas legibles en la tabla cases (el detalle completo sigue en la columna JSON "data")
 const caseCols = db.prepare('PRAGMA table_info(cases)').all().map((c) => c.name);
 for (const [name, type] of [['user_text', 'TEXT'], ['incident_location', 'TEXT'], ['category', 'TEXT'], ['urgency_level', 'TEXT'], ['entity', 'TEXT'], ['has_image', 'INTEGER']]) {
   if (!caseCols.includes(name)) db.exec(`ALTER TABLE cases ADD COLUMN ${name} ${type}`);
 }
+
+db.exec(`
+  CREATE VIEW IF NOT EXISTS historial_casos AS
+    SELECT id, created_at, user_text, incident_location, category, urgency_level, entity, has_image, data
+    FROM cases;
+  CREATE VIEW IF NOT EXISTS historial_seguridad AS
+    SELECT * FROM historial_casos WHERE lower(trim(category)) = 'seguridad';
+  CREATE VIEW IF NOT EXISTS historial_ambiente AS
+    SELECT * FROM historial_casos WHERE lower(trim(category)) = 'ambiente';
+  CREATE VIEW IF NOT EXISTS historial_salud AS
+    SELECT * FROM historial_casos WHERE lower(trim(category)) = 'salud';
+  CREATE VIEW IF NOT EXISTS historial_infraestructura AS
+    SELECT * FROM historial_casos WHERE lower(trim(category)) = 'infraestructura';
+`);
 
 const stmts = {
   insertCase: db.prepare('INSERT INTO cases (data, created_at) VALUES (?, ?)'),
@@ -97,16 +140,17 @@ function syncRelational(record) {
     record.has_image ? 1 : 0,
     id
   );
+  const category = record.analysis?.category ?? null;
   db.prepare('DELETE FROM trace_events WHERE case_id = ?').run(id);
-  const insEvent = db.prepare('INSERT INTO trace_events (case_id, seq, at, agent, kind, tool, input, output, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-  (record.trace_events ?? []).forEach((e, i) => insEvent.run(id, i + 1, e.at ?? null, e.agent ?? null, e.kind ?? null, e.tool ?? null, asText(e.input), asText(e.output), e.message ?? null));
+  const insEvent = db.prepare('INSERT INTO trace_events (case_id, seq, at, agent, kind, tool, input, output, message, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  (record.trace_events ?? []).forEach((e, i) => insEvent.run(id, i + 1, e.at ?? null, e.agent ?? null, e.kind ?? null, e.tool ?? null, asText(e.input), asText(e.output), e.message ?? null, category));
   db.prepare('DELETE FROM routes WHERE case_id = ?').run(id);
-  const insRoute = db.prepare('INSERT INTO routes (case_id, seq, at, source, origin, destination, route_name, distance_km, duration_min, via, alerts, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const insRoute = db.prepare('INSERT INTO routes (case_id, seq, at, source, origin, destination, route_name, distance_km, duration_min, via, alerts, detail, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const history = record.route_history ?? (record.route ? [{ at: record.createdAt, source: 'registro', route: record.route }] : []);
-  history.forEach((h, i) => insRoute.run(id, i + 1, h.at ?? null, h.source ?? null, h.route?.origin?.name ?? null, h.route?.destination?.name ?? null, h.route?.best?.name ?? null, h.route?.best?.distance_km ?? null, h.route?.best?.duration_min ?? null, asText(h.route?.best?.via), asText(h.route?.alerts), JSON.stringify(h.route)));
+  history.forEach((h, i) => insRoute.run(id, i + 1, h.at ?? null, h.source ?? null, h.route?.origin?.name ?? null, h.route?.destination?.name ?? null, h.route?.best?.name ?? null, h.route?.best?.distance_km ?? null, h.route?.best?.duration_min ?? null, asText(h.route?.best?.via), asText(h.route?.alerts), JSON.stringify(h.route), category));
   db.prepare('DELETE FROM chat_messages WHERE case_id = ?').run(id);
-  const insChat = db.prepare('INSERT INTO chat_messages (case_id, at, question, response, tools_used) VALUES (?, ?, ?, ?, ?)');
-  (record.chat_history ?? []).forEach((m) => insChat.run(id, m.at ?? null, m.question ?? null, m.response ?? null, asText(m.tools_used)));
+  const insChat = db.prepare('INSERT INTO chat_messages (case_id, at, question, response, tools_used, category) VALUES (?, ?, ?, ?, ?, ?)');
+  (record.chat_history ?? []).forEach((m) => insChat.run(id, m.at ?? null, m.question ?? null, m.response ?? null, asText(m.tools_used), category));
 }
 
 const parseCase = (row) => (row ? { ...JSON.parse(row.data), id: Number(row.id) } : null);
@@ -183,10 +227,8 @@ function migrateLegacyJson() {
 }
 
 migrateLegacyJson();
-// Rellena las tablas con los casos creados antes de existir trace_events
-for (const row of db.prepare('SELECT id, data FROM cases').all()) {
-  if (!db.prepare('SELECT 1 FROM trace_events WHERE case_id = ? LIMIT 1').get(row.id) || (JSON.parse(row.data).route && !db.prepare('SELECT 1 FROM routes WHERE case_id = ? LIMIT 1').get(row.id))) syncRelational(parseCase(row));
-}
+// Resincroniza todos los casos existentes (rellena historial, chat y categoría)
+for (const row of db.prepare('SELECT id, data FROM cases').all()) syncRelational(parseCase(row));
 stmts.purgeCache.run(Date.now());
 
 module.exports = { createCase, updateCase, getCaseById, listCases, getRecentCases, cacheGet, cacheSet, normalizeKey };

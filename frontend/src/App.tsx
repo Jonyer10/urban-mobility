@@ -30,6 +30,8 @@ const EXAMPLES = [
   'Hay un hueco enorme en la vía y es peligroso para motos',
   'El semáforo de la esquina lleva días sin funcionar',
   'La luminaria del parque está apagada y la zona es insegura',
+  'Una persona se siente mal y necesita atención médica',
+  'Hay basura acumulada en el parque y está contaminando la zona',
 ]
 const TABS = [
   { id: 'summary' as Tab, label: 'Resumen', icon: FileText },
@@ -186,7 +188,7 @@ export default function App() {
               <path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" />
               <circle cx="12" cy="10" r="2.5" />
             </svg>
-            Urban Mobility
+            Geolocalizacion Al Dia
           </div>
           <nav className="nav" aria-label="Secciones">
             <button type="button" className={view === 'form' ? 'on' : ''} onClick={() => setView('form')}>Nuevo caso</button>

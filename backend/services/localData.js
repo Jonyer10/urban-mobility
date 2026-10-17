@@ -35,4 +35,4 @@ function searchLocalServices(category) {
   return DEFAULT_SERVICES;
 }
 
-module.exports = { searchLocalServices };
+module.exports = { searchLocalServices, urbanDatabase, DEFAULT_SERVICES };
