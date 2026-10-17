@@ -56,6 +56,7 @@ export default function App() {
   const [result, setResult] = useState<CaseResult | null>(null)
   const [copied, setCopied] = useState(false)
   const [filter, setFilter] = useState('')
+  const [routeSel, setRouteSel] = useState<number | null>(null)
   const [drag, setDrag] = useState(false)
   const [history, setHistory] = useState<CaseSummary[]>([])
   const [dark, setDark] = useState(() => {
@@ -103,6 +104,7 @@ export default function App() {
 
   const showResult = (r: CaseResult) => {
     setResult(r)
+    setRouteSel(null)
     setTab('summary')
     setView('results')
   }
@@ -172,6 +174,8 @@ export default function App() {
     return q ? history.filter((h) => `${h.user_text} ${h.incident_location} ${h.category ?? ''}`.toLowerCase().includes(q)) : history
   }, [history, filter])
   const tabIndex = TABS.findIndex((t) => t.id === tab)
+  const routes = result?.route_history ?? []
+  const activeRoute = routeSel !== null && routes[routeSel] ? routes[routeSel].route : result?.route
 
   return (
     <>
@@ -429,14 +433,32 @@ export default function App() {
               )}
 
               {tab === 'map' && (
+                <>
+                {routes.length > 1 && (
+                  <div className="route-picker reveal">
+                    <b><RouteIcon size={15} /> Rutas calculadas en este caso ({routes.length})</b>
+                    <div>
+                      {routes.map((h, i) => {
+                        const on = (routeSel ?? routes.length - 1) === i
+                        return (
+                          <button type="button" key={i} className={on ? 'on' : ''} onClick={() => setRouteSel(i)}>
+                            <span>{h.source === 'chat' ? 'Chat' : 'Registro'} · {new Date(h.at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
+                            <strong>{h.route.origin?.name ?? 'Partida'} → {h.route.destination?.name ?? 'Destino'}</strong>
+                            <small>{h.route.best.duration_min} min · {h.route.best.distance_km} km</small>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div className="grid2 map-grid reveal">
                   {result.location ? (
-                    <div className="card"><MapView location={result.location} route={result.route} /></div>
+                    <div className="card"><MapView location={result.location} route={activeRoute} /></div>
                   ) : (
                     <div className="card empty">Sin ubicación disponible.</div>
                   )}
-                  {result.route ? (
-                    <RoutePanel route={result.route} />
+                  {activeRoute ? (
+                    <RoutePanel route={activeRoute} />
                   ) : (
                     <div className="card empty">
                       <p>No se planeó ninguna ruta.</p>
@@ -444,6 +466,7 @@ export default function App() {
                     </div>
                   )}
                 </div>
+                </>
               )}
 
               <div hidden={tab !== 'chat'}>
@@ -451,7 +474,7 @@ export default function App() {
                   key={result.case_id}
                   caseId={result.case_id}
                   history={result.chat_history}
-                  onCaseUpdated={(updated) => { setResult(updated); void refreshHistory() }}
+                  onCaseUpdated={(updated) => { setResult(updated); setRouteSel(null); void refreshHistory() }}
                 />
               </div>
 

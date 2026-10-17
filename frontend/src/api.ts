@@ -44,6 +44,7 @@ export async function getCase(caseId: number): Promise<CaseResult> {
     location: c.location ?? null,
     services: c.services ?? [],
     route: c.route ?? null,
+    route_history: c.route_history ?? (c.route ? [{ at: c.createdAt, source: 'registro', route: c.route }] : []),
     trace: c.trace_log ?? [],
     trace_events: c.trace_events,
     chat_history: c.chat_history,

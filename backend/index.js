@@ -65,6 +65,7 @@ app.post('/api/process-case', async (req, res) => {
       start_point: workflowResult.start_point || null,
       services: workflowResult.services || [],
       route: workflowResult.route || null,
+      route_history: workflowResult.route ? [{ at: new Date().toISOString(), source: 'registro', route: workflowResult.route }] : [],
       trace_log: workflowResult.trace,
       trace_events: workflowResult.trace_events || [],
       chat_history: []
@@ -79,6 +80,7 @@ app.post('/api/process-case', async (req, res) => {
       location: newCase.location,
       services: newCase.services,
       route: newCase.route,
+      route_history: newCase.route_history,
       start_point: newCase.start_point,
       trace: newCase.trace_log,
       trace_events: newCase.trace_events

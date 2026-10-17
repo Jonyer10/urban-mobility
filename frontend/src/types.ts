@@ -78,6 +78,12 @@ export interface CaseSummary {
   action_executed?: string
 }
 
+export interface RouteEntry {
+  at: string
+  source: 'registro' | 'chat'
+  route: RouteResult
+}
+
 export interface CaseResult {
   case_id: number
   has_image?: boolean
@@ -87,6 +93,7 @@ export interface CaseResult {
   location: CaseLocation | null
   services: LocalService[]
   route?: RouteResult | null
+  route_history?: RouteEntry[]
   trace: string[]
   trace_events?: TraceEvent[]
   chat_history?: ChatRecord[]

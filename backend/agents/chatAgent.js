@@ -99,8 +99,11 @@ function createToolHandlers(caseId, getActiveIncidents) {
       const route = await getBestRoute(startPoint, destination, getActiveIncidents());
 
       // Acción: la ruta calculada queda guardada en el caso
+      const newRoute = { ...route, origin: startPoint, destination };
+      const previous = urbanCase.route_history ?? (urbanCase.route ? [{ at: urbanCase.createdAt, source: 'registro', route: urbanCase.route }] : []);
       updateCase(caseId, {
-        route: { ...route, origin: startPoint, destination },
+        route: newRoute,
+        route_history: [...previous, { at: new Date().toISOString(), source: 'chat', route: newRoute }],
         start_point: startPoint,
         ...(origen && { start_location: origen }),
         destination_location: destino

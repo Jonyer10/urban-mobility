@@ -21,7 +21,7 @@ const analystAgent = {
   responsibility: 'Interpretar texto e imagen del caso y producir un análisis estructurado.',
   inputs: ['user_text', 'image_base64 (opcional)'],
   tools: ['Gemini (modelo multimodal)', 'Caché de análisis (SQLite)'],
-  outputs: ['analysis: category, urgency_level, summary, is_valid_case, affects_road'],
+  outputs: ['analysis: category, urgency_level, summary, is_valid_case, consistency, affects_road'],
 
   // Devuelve { analysis, rejected }. rejected = true si la información es insuficiente y el flujo debe detenerse.
   async run({ userText, imageBase64 }, trace) {
@@ -58,7 +58,7 @@ const analystAgent = {
     } else {
       try {
         const contents = [{
-          text: `Analiza esta necesidad urbana y responde estrictamente en formato JSON plano (sin bloques de código markdown) con las llaves exactas: "category" (una de: Movilidad, Infraestructura, Seguridad, Salud, Ambiente, Otra), "urgency_level" (Bajo, Medio o Alto), "summary" (una frase corta), "is_valid_case" (booleano), "affects_road" (booleano: true si reporta una novedad en la vía que puede afectar el tránsito, como accidente, hueco, cierre, obra, semáforo dañado o falta de luz)${imageBase64 ? ', "image_description" (una frase que describa lo que se ve en la imagen adjunta y si confirma o contradice el texto)' : ''}. Texto del usuario: ${userText}`
+          text: `Analiza esta necesidad urbana y responde estrictamente en formato JSON plano (sin bloques de código markdown) con las llaves exactas: "category" (una de: Movilidad, Infraestructura, Seguridad, Salud, Ambiente, Otra), "urgency_level" (Bajo, Medio o Alto), "summary" (una frase corta), "is_valid_case" (booleano), "affects_road" (booleano: true si reporta una novedad en la vía que puede afectar el tránsito, como accidente, hueco, cierre, obra, semáforo dañado o falta de luz)${imageBase64 ? ', "image_description" (una frase que describa lo que se ve en la imagen adjunta y si confirma o contradice el texto)' : ''}, "consistency" (una de: coherente, insuficiente, contradictoria, no_corresponde; usa "contradictoria" si el texto se contradice a sí mismo o con la imagen adjunta, "no_corresponde" si el texto o la imagen no describen una necesidad urbana real de movilidad, infraestructura, seguridad, salud o ambiente, e "insuficiente" si falta información para actuar), "missing_info_reason" (frase que explique qué falta o qué no coincide; null si es coherente). Marca "is_valid_case" como false siempre que consistency no sea "coherente". Texto del usuario: ${userText}`
         }];
         if (imageBase64) contents.push({ inlineData: { mimeType: imageMime, data: imageBase64 } });
 
@@ -75,6 +75,15 @@ const analystAgent = {
         console.warn('Aviso: No se pudo conectar con Gemini o parsear la respuesta, usando análisis por defecto:', modelError.message);
         trace.log({ agent: NAME, kind: 'tool', tool: 'gemini', input: userText, output: modelError.message, message: `${NAME}: Gemini no disponible; se usa el análisis por defecto.` });
       }
+    }
+
+    // Información insuficiente, contradictoria o que no corresponde con un caso urbano: se detiene el flujo
+    const inconsistent = analysis.consistency && analysis.consistency !== 'coherente';
+    if (analysis.is_valid_case === false || inconsistent) {
+      analysis.is_valid_case = false;
+      analysis.missing_info_reason = analysis.missing_info_reason || 'La información proporcionada no permite procesar el caso; revísala e inténtalo de nuevo.';
+      trace.log({ agent: NAME, kind: 'action', tool: 'validar_caso', input: { consistency: analysis.consistency ?? null }, output: analysis.missing_info_reason, message: `${NAME}: caso rechazado (${analysis.consistency ?? 'no válido'}). ${analysis.missing_info_reason}` });
+      return { rejected: true, analysis };
     }
 
     trace.log({ agent: NAME, output: analysis, message: `${NAME}: análisis completado con categoría '${analysis.category}', urgencia ${analysis.urgency_level}.` });

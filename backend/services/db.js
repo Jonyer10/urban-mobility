@@ -20,7 +20,57 @@ db.exec(`
     expires_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_cache_expires ON cache (expires_at);
+
+  -- Trazabilidad: un registro por paso de agente/herramienta/acción (lo que muestra la pestaña Trazabilidad)
+  CREATE TABLE IF NOT EXISTS trace_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL,
+    at TEXT,
+    agent TEXT,
+    kind TEXT,
+    tool TEXT,
+    input TEXT,
+    output TEXT,
+    message TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_trace_case ON trace_events (case_id, seq);
+
+  -- Historial de rutas calculadas por caso (al registrar y desde el chat)
+  CREATE TABLE IF NOT EXISTS routes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL,
+    at TEXT,
+    source TEXT,
+    origin TEXT,
+    destination TEXT,
+    route_name TEXT,
+    distance_km REAL,
+    duration_min REAL,
+    via TEXT,
+    alerts TEXT,
+    detail TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_routes_case ON routes (case_id, seq);
+
+  -- Conversaciones del chat contextual
+  CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+    at TEXT,
+    question TEXT,
+    response TEXT,
+    tools_used TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_chat_case ON chat_messages (case_id);
 `);
+
+// Columnas legibles en la tabla cases (el detalle completo sigue en la columna JSON "data")
+const caseCols = db.prepare('PRAGMA table_info(cases)').all().map((c) => c.name);
+for (const [name, type] of [['user_text', 'TEXT'], ['incident_location', 'TEXT'], ['category', 'TEXT'], ['urgency_level', 'TEXT'], ['entity', 'TEXT'], ['has_image', 'INTEGER']]) {
+  if (!caseCols.includes(name)) db.exec(`ALTER TABLE cases ADD COLUMN ${name} ${type}`);
+}
 
 const stmts = {
   insertCase: db.prepare('INSERT INTO cases (data, created_at) VALUES (?, ?)'),
@@ -33,6 +83,32 @@ const stmts = {
   purgeCache: db.prepare('DELETE FROM cache WHERE expires_at <= ?')
 };
 
+const asText = (v) => (v == null ? null : typeof v === 'string' ? v : JSON.stringify(v));
+
+// Refleja el caso en columnas legibles y en las tablas trace_events y chat_messages
+function syncRelational(record) {
+  const id = record.id;
+  db.prepare('UPDATE cases SET user_text = ?, incident_location = ?, category = ?, urgency_level = ?, entity = ?, has_image = ? WHERE id = ?').run(
+    record.user_text ?? null,
+    record.incident_location ?? record.origin_location ?? null,
+    record.analysis?.category ?? null,
+    record.analysis?.urgency_level ?? null,
+    record.services?.[0]?.name ?? null,
+    record.has_image ? 1 : 0,
+    id
+  );
+  db.prepare('DELETE FROM trace_events WHERE case_id = ?').run(id);
+  const insEvent = db.prepare('INSERT INTO trace_events (case_id, seq, at, agent, kind, tool, input, output, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  (record.trace_events ?? []).forEach((e, i) => insEvent.run(id, i + 1, e.at ?? null, e.agent ?? null, e.kind ?? null, e.tool ?? null, asText(e.input), asText(e.output), e.message ?? null));
+  db.prepare('DELETE FROM routes WHERE case_id = ?').run(id);
+  const insRoute = db.prepare('INSERT INTO routes (case_id, seq, at, source, origin, destination, route_name, distance_km, duration_min, via, alerts, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const history = record.route_history ?? (record.route ? [{ at: record.createdAt, source: 'registro', route: record.route }] : []);
+  history.forEach((h, i) => insRoute.run(id, i + 1, h.at ?? null, h.source ?? null, h.route?.origin?.name ?? null, h.route?.destination?.name ?? null, h.route?.best?.name ?? null, h.route?.best?.distance_km ?? null, h.route?.best?.duration_min ?? null, asText(h.route?.best?.via), asText(h.route?.alerts), JSON.stringify(h.route)));
+  db.prepare('DELETE FROM chat_messages WHERE case_id = ?').run(id);
+  const insChat = db.prepare('INSERT INTO chat_messages (case_id, at, question, response, tools_used) VALUES (?, ?, ?, ?, ?)');
+  (record.chat_history ?? []).forEach((m) => insChat.run(id, m.at ?? null, m.question ?? null, m.response ?? null, asText(m.tools_used)));
+}
+
 const parseCase = (row) => (row ? { ...JSON.parse(row.data), id: Number(row.id) } : null);
 
 // --- Casos ---
@@ -42,6 +118,7 @@ function createCase(caseData) {
   const id = Number(lastInsertRowid);
   const record = { ...caseData, id, createdAt: new Date(createdAt).toISOString() };
   stmts.updateCase.run(JSON.stringify(record), id);
+  syncRelational(record);
   return record;
 }
 
@@ -54,6 +131,7 @@ function updateCase(id, changes) {
   if (!current) return null;
   const record = { ...current, ...changes, id };
   stmts.updateCase.run(JSON.stringify(record), id);
+  syncRelational(record);
   return record;
 }
 
@@ -105,6 +183,10 @@ function migrateLegacyJson() {
 }
 
 migrateLegacyJson();
+// Rellena las tablas con los casos creados antes de existir trace_events
+for (const row of db.prepare('SELECT id, data FROM cases').all()) {
+  if (!db.prepare('SELECT 1 FROM trace_events WHERE case_id = ? LIMIT 1').get(row.id) || (JSON.parse(row.data).route && !db.prepare('SELECT 1 FROM routes WHERE case_id = ? LIMIT 1').get(row.id))) syncRelational(parseCase(row));
+}
 stmts.purgeCache.run(Date.now());
 
 module.exports = { createCase, updateCase, getCaseById, listCases, getRecentCases, cacheGet, cacheSet, normalizeKey };

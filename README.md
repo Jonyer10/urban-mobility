@@ -109,6 +109,20 @@ Los casos se guardan en SQLite (`backend/data/urban.db`, configurable con `DB_PA
 - **Trazabilidad estructurada (`trace_events`):** un evento por cada participación de un agente o herramienta.
 - **Trazabilidad legible (`trace_log`):** los mismos eventos como frases, que muestra la interfaz.
 - **Historial del chat (`chat_history`):** cada pregunta, respuesta y herramientas usadas.
+- **Imagen adjunta:** se guarda con el caso y se sirve en `GET /api/cases/:id/image`.
+- **Historial de rutas (`route_history`):** cada ruta calculada, al registrar el caso y desde el chat, sin sobrescribir las anteriores.
+
+Además del JSON completo del caso (columna `data`), la base replica la información en tablas consultables:
+
+| Tabla | Contenido |
+|-------|-----------|
+| `cases` | Caso con columnas legibles: texto, ubicación, categoría, urgencia, entidad e indicador de imagen |
+| `trace_events` | Un registro por paso de agente, herramienta o acción (agente, tipo, herramienta, entrada, salida) |
+| `chat_messages` | Preguntas del chat con su respuesta y herramientas usadas |
+| `routes` | Rutas calculadas por caso: origen, destino, distancia, tiempo, vías y alertas |
+| `cache` | Respuestas reutilizadas para no consumir cuota del modelo |
+
+**Validación del caso (Agente 1):** además de rechazar descripciones demasiado cortas, Gemini clasifica la entrada como `coherente`, `insuficiente`, `contradictoria` o `no_corresponde` (por ejemplo, una imagen que no coincide con el texto). Si no es coherente, el flujo se detiene y se explica el motivo.
 
 Formato de un evento de `trace_events`:
 ```json
