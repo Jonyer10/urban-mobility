@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
+import { Send, Wrench, Zap } from 'lucide-react'
 import { askChat, getCase } from '../api'
 import type { CaseResult, ChatRecord, ToolUsed } from '../types'
 
@@ -9,6 +10,7 @@ interface Msg {
 }
 
 const ACTIONS = ['actualizar_caso']
+const SUGGESTIONS = ['¿Quién atenderá mi caso?', '¿Qué ruta me recomiendas?', 'Cambia la urgencia a Alto']
 
 // Reconstruye la conversación guardada en el servidor
 const fromHistory = (history: ChatRecord[] = []): Msg[] =>
@@ -50,9 +52,9 @@ export function Chat({ caseId, history, onCaseUpdated }: Props) {
     box.current?.scrollTo({ top: box.current.scrollHeight, behavior: 'smooth' })
   }, [msgs])
 
-  const send = async (e: React.FormEvent) => {
+  const send = async (e: React.FormEvent, preset?: string) => {
     e.preventDefault()
-    const q = question.trim()
+    const q = (preset ?? question).trim()
     if (!q || busy) return
     setQuestion('')
     setBusy(true)
@@ -79,17 +81,29 @@ export function Chat({ caseId, history, onCaseUpdated }: Props) {
               <p className={m.from}>{m.from === 'bot' ? renderText(m.text) : m.text}</p>
               {m.tools && m.tools.length > 0 && (
                 <small className="tools">
-                  {m.tools.map((t) => (ACTIONS.includes(t.name) ? '⚙ Acción ejecutada: ' : '🔧 Herramienta: ') + t.name).join(' · ')}
+                  {m.tools.map((t) => (
+                    <span key={t.name} className="tool-pill">
+                      {ACTIONS.includes(t.name) ? <Zap size={12} /> : <Wrench size={12} />}
+                      {ACTIONS.includes(t.name) ? 'Acción ejecutada' : 'Herramienta'}: {t.name}
+                    </span>
+                  ))}
                 </small>
               )}
             </Fragment>
           ))}
         </div>
       )}
+      {msgs.length === 0 && (
+        <div className="chips">
+          {SUGGESTIONS.map((q) => (
+            <button type="button" key={q} className="chip" onClick={(e) => void send(e, q)}>{q}</button>
+          ))}
+        </div>
+      )}
       <form onSubmit={send} className="row">
         <input type="text" value={question} onChange={(e) => setQuestion(e.target.value)}
           placeholder="Pregunta sobre este caso…" />
-        <button disabled={busy || !question.trim()}>Enviar</button>
+        <button disabled={busy || !question.trim()}><Send size={15} /> Enviar</button>
       </form>
     </section>
   )

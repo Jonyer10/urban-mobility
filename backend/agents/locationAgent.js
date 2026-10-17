@@ -25,7 +25,7 @@ const locationAgent = {
     const isRoadIncident = analysis.affects_road === true;
     const recommendations = [];
     if (isRoadIncident) {
-      recommendations.push(`Su reporte fue registrado y notificado a ${entity.name} (${entity.contact}). No necesita desplazarse hasta allí.`);
+      recommendations.push(`Su reporte fue registrado y asignado a ${entity.name} (contacto de referencia: ${entity.contact}). No necesita desplazarse hasta allí.`);
     } else if (!hasDestination) {
       recommendations.push(`Derivar la solicitud al recurso propio: ${entity.name} (Contacto: ${entity.contact}).`);
     }

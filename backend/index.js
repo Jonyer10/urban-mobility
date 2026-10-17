@@ -4,6 +4,7 @@ require('dotenv').config();
 const { MultiAgentOrchestrator, describeAgents } = require('./agents/orchestrator');
 const { runChatAgent } = require('./agents/chatAgent');
 const { createCase, updateCase, getCaseById, listCases, getRecentCases, cacheGet, cacheSet, normalizeKey } = require('./services/db');
+const { detectMime } = require('./services/image');
 
 const app = express();
 app.use(express.json({ limit: '10mb' })); // Permitir imágenes en Base64
@@ -54,6 +55,9 @@ app.post('/api/process-case', async (req, res) => {
       incident_location,
       start_location: start_location || null,
       destination_location: destination_location || null,
+      has_image: Boolean(image_base64),
+      image_mime: image_base64 ? detectMime(image_base64) : null,
+      image_base64: image_base64 || null,
       analysis: workflowResult.analysis,
       recommendations: workflowResult.recommendations,
       action_executed: workflowResult.action_result,
@@ -68,6 +72,7 @@ app.post('/api/process-case', async (req, res) => {
 
     return res.status(201).json({
       case_id: newCase.id,
+      has_image: newCase.has_image,
       analysis: newCase.analysis,
       recommendations: newCase.recommendations,
       action_result: newCase.action_executed,
@@ -185,7 +190,15 @@ app.get('/api/cases/:id', (req, res) => {
     return res.status(404).json({ error: "Caso no encontrado." });
   }
 
-  return res.json(urbanCase);
+  const { image_base64, ...rest } = urbanCase; // la imagen se sirve aparte
+  return res.json(rest);
+});
+
+// Endpoint: imagen adjunta del caso
+app.get('/api/cases/:id/image', (req, res) => {
+  const urbanCase = getCaseById(Number.parseInt(req.params.id, 10));
+  if (!urbanCase?.image_base64) return res.status(404).json({ error: 'El caso no tiene imagen.' });
+  res.type(urbanCase.image_mime || 'image/jpeg').send(Buffer.from(urbanCase.image_base64, 'base64'));
 });
 
 // Iniciar servidor

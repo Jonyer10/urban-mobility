@@ -4,6 +4,7 @@ export interface Analysis {
   summary: string
   is_valid_case: boolean
   missing_info_reason: string | null
+  image_description?: string
 }
 
 export interface LocalService {
@@ -35,6 +36,14 @@ export interface RouteResult {
   alerts: string[]
   destination?: { name: string; lat: number; lon: number }
   origin?: { name: string; lat: number; lon: number }
+}
+
+export interface AgentInfo {
+  name: string
+  responsibility: string
+  inputs?: string[] | string
+  tools?: string[] | string
+  outputs?: string[] | string
 }
 
 export interface ToolUsed {
@@ -71,6 +80,7 @@ export interface CaseSummary {
 
 export interface CaseResult {
   case_id: number
+  has_image?: boolean
   analysis: Analysis
   recommendations: string[]
   action_result: string

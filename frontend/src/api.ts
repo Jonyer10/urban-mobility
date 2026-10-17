@@ -1,4 +1,4 @@
-import type { CaseResult, CaseSummary, ToolUsed } from './types'
+import type { AgentInfo, CaseResult, CaseSummary, ToolUsed } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
@@ -37,6 +37,7 @@ export async function getCase(caseId: number): Promise<CaseResult> {
   const c = await res.json()
   return {
     case_id: c.id,
+    has_image: Boolean(c.has_image),
     analysis: c.analysis,
     recommendations: c.recommendations ?? [],
     action_result: c.action_executed ?? '',
@@ -53,6 +54,16 @@ export async function getCase(caseId: number): Promise<CaseResult> {
 export async function listCases(limit = 15): Promise<CaseSummary[]> {
   const res = await fetch(`${API_URL}/api/cases?limit=${limit}`)
   if (!res.ok) throw new Error(`No se pudo cargar el historial (${res.status}).`)
+  return res.json()
+}
+
+/** URL de la imagen adjunta de un caso. */
+export const caseImageUrl = (caseId: number) => `${API_URL}/api/cases/${caseId}/image`
+
+/** Descripción de los agentes (responsabilidad, herramientas y salidas). */
+export async function listAgents(): Promise<AgentInfo[]> {
+  const res = await fetch(`${API_URL}/api/agents`)
+  if (!res.ok) throw new Error(`No se pudo cargar los agentes (${res.status}).`)
   return res.json()
 }
 
