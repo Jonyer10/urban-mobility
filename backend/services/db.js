@@ -27,6 +27,7 @@ const stmts = {
   updateCase: db.prepare('UPDATE cases SET data = ? WHERE id = ?'),
   getCase: db.prepare('SELECT id, data FROM cases WHERE id = ?'),
   recentCases: db.prepare('SELECT id, data FROM cases WHERE created_at >= ? ORDER BY id DESC'),
+  listCases: db.prepare('SELECT id, data FROM cases ORDER BY id DESC LIMIT ?'),
   getCache: db.prepare('SELECT value FROM cache WHERE key = ? AND expires_at > ?'),
   setCache: db.prepare('INSERT OR REPLACE INTO cache (key, value, expires_at) VALUES (?, ?, ?)'),
   purgeCache: db.prepare('DELETE FROM cache WHERE expires_at <= ?')
@@ -46,6 +47,18 @@ function createCase(caseData) {
 
 function getCaseById(id) {
   return parseCase(stmts.getCase.get(id));
+}
+
+function updateCase(id, changes) {
+  const current = getCaseById(id);
+  if (!current) return null;
+  const record = { ...current, ...changes, id };
+  stmts.updateCase.run(JSON.stringify(record), id);
+  return record;
+}
+
+function listCases(limit = 50) {
+  return stmts.listCases.all(limit).map(parseCase);
 }
 
 function getRecentCases(sinceMs) {
@@ -94,4 +107,4 @@ function migrateLegacyJson() {
 migrateLegacyJson();
 stmts.purgeCache.run(Date.now());
 
-module.exports = { createCase, getCaseById, getRecentCases, cacheGet, cacheSet, normalizeKey };
+module.exports = { createCase, updateCase, getCaseById, listCases, getRecentCases, cacheGet, cacheSet, normalizeKey };

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
-import { fileToBase64, processCase } from './api'
+import { useCallback, useEffect, useState } from 'react'
+import { fileToBase64, getCase, listCases, processCase } from './api'
 import { Chat } from './components/Chat'
 import { MapView } from './components/MapView'
-import type { CaseResult } from './types'
+import { TracePanel } from './components/TracePanel'
+import type { CaseResult, CaseSummary } from './types'
 import './index.css'
 
 const STEPS = [
@@ -11,23 +12,7 @@ const STEPS = [
   'Geolocalizando con OpenStreetMap',
   'Registrando acción y trazabilidad',
 ]
-const HISTORY_KEY = 'um-history'
 const THEME_KEY = 'um-theme'
-
-interface HistoryItem {
-  at: string
-  text: string
-  result: CaseResult
-}
-
-function loadHistory(): HistoryItem[] {
-  try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]')
-  } catch {
-    return []
-  }
-}
-
 const EXAMPLES = [
   'Hay un hueco enorme en la vía y es peligroso para motos',
   'El semáforo de la esquina lleva días sin funcionar',
@@ -37,6 +22,8 @@ const EXAMPLES = [
 export default function App() {
   const [text, setText] = useState('')
   const [origin, setOrigin] = useState('')
+  const [start, setStart] = useState('')
+  const [destination, setDestination] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState('')
   const [loading, setLoading] = useState(false)
@@ -44,7 +31,7 @@ export default function App() {
   const [result, setResult] = useState<CaseResult | null>(null)
   const [step, setStep] = useState(0)
   const [copied, setCopied] = useState(false)
-  const [history, setHistory] = useState<HistoryItem[]>(loadHistory)
+  const [history, setHistory] = useState<CaseSummary[]>([])
   const [dark, setDark] = useState(() => {
     const saved = localStorage.getItem(THEME_KEY)
     return saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -61,6 +48,28 @@ export default function App() {
     const id = setInterval(() => setStep((s) => Math.min(s + 1, STEPS.length - 1)), 1400)
     return () => clearInterval(id)
   }, [loading])
+
+  // El historial vive en la base de datos del backend
+  const refreshHistory = useCallback(async () => {
+    try {
+      setHistory(await listCases())
+    } catch {
+      /* sin conexión: se conserva el historial mostrado */
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshHistory()
+  }, [refreshHistory])
+
+  const openCase = async (id: number) => {
+    setError('')
+    try {
+      setResult(await getCase(id))
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
 
   const copySummary = async () => {
     if (!result) return
@@ -93,15 +102,15 @@ export default function App() {
     setResult(null)
     try {
       const image_base64 = file ? await fileToBase64(file) : undefined
-      const r = await processCase({ user_text: text, origin_location: origin, image_base64 })
+      const r = await processCase({
+        user_text: text,
+        incident_location: origin,
+        start_location: start.trim() || undefined,
+        destination_location: destination.trim() || undefined,
+        image_base64,
+      })
       setResult(r)
-      const next = [{ at: new Date().toISOString(), text, result: r }, ...history].slice(0, 8)
-      setHistory(next)
-      try {
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
-      } catch {
-        /* almacenamiento lleno: se ignora */
-      }
+      void refreshHistory()
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -133,6 +142,7 @@ export default function App() {
       </header>
 
       <div className="layout">
+        <aside className="side">
         <form className="card fields" onSubmit={submit}>
           <h2><span className="dot" />Nuevo caso</h2>
 
@@ -150,9 +160,21 @@ export default function App() {
           </label>
 
           <label className="field">
-            <span>Ubicación</span>
+            <span>Ubicación de la novedad <small>(dónde ocurre el problema)</small></span>
             <input type="text" required value={origin} onChange={(e) => setOrigin(e.target.value)}
-              placeholder="Ej.: Carrera 7 con calle 72, Bogotá" />
+              placeholder="Ej.: Calle 77 con carrera 30, Bogotá" />
+          </label>
+
+          <label className="field">
+            <span>Punto de partida <small>(opcional, desde donde inicia tu recorrido)</small></span>
+            <input type="text" value={start} onChange={(e) => setStart(e.target.value)}
+              placeholder="Ej.: Portal de las Américas" />
+          </label>
+
+          <label className="field">
+            <span>Destino <small>(opcional, para calcular la mejor ruta)</small></span>
+            <input type="text" value={destination} onChange={(e) => setDestination(e.target.value)}
+              placeholder="Ej.: Calle 100 con Autopista Norte" />
           </label>
 
           <div className="field">
@@ -179,18 +201,19 @@ export default function App() {
         </form>
 
         {history.length > 0 && (
-          <section className="card history-card" style={{ gridColumn: 1 }}>
+          <section className="card history-card">
             <h2><span className="dot" />Casos recientes</h2>
             <div className="history">
               {history.map((h) => (
-                <button type="button" key={h.at} onClick={() => { setResult(h.result); setError('') }}>
-                  <b>#{h.result.case_id} · {h.text}</b>
-                  <span>{new Date(h.at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
+                <button type="button" key={h.id} className={result?.case_id === h.id ? 'active' : ''} onClick={() => void openCase(h.id)}>
+                  <b>#{h.id} · {h.user_text}</b>
+                  <span>{new Date(h.created_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
                 </button>
               ))}
             </div>
           </section>
         )}
+        </aside>
 
         <div className="stack">
           {error && <div className="alert" role="alert">{error}</div>}
@@ -218,7 +241,8 @@ export default function App() {
           )}
 
           {result && !loading && (
-            <>
+            <div className="results">
+              <div className="col">
               <section className="card fade">
                 <div className="head">
                   <h2><span className="dot" />Análisis del caso #{result.case_id}</h2>
@@ -251,21 +275,31 @@ export default function App() {
                   )}
                 </section>
               )}
+              <details className="card">
+                <summary>Trazabilidad de agentes y herramientas</summary>
+                <TracePanel events={result.trace_events} fallback={result.trace} />
+              </details>
+              </div>
 
+              <div className="col">
               {result.location && (
                 <section className="card">
-                  <h2><span className="dot" />Ubicación</h2>
-                  <MapView location={result.location} />
+                  <h2><span className="dot" />Mapa y ruta</h2>
+                  <MapView location={result.location} route={result.route} />
                 </section>
               )}
 
-              <Chat caseId={result.case_id} />
-
-              <details className="card">
-                <summary>Trazabilidad de agentes</summary>
-                <ol className="trace">{result.trace.map((t, i) => <li key={i}>{t}</li>)}</ol>
-              </details>
-            </>
+              <Chat
+                key={result.case_id}
+                caseId={result.case_id}
+                history={result.chat_history}
+                onCaseUpdated={(updated) => {
+                  setResult(updated)
+                  void refreshHistory()
+                }}
+              />
+              </div>
+            </div>
           )}
         </div>
       </div>

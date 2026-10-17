@@ -55,6 +55,13 @@ async function fetchOsrmRoutes(from, to) {
   return data.routes;
 }
 
+// Reduce los puntos de la geometría ([lon, lat]) para que el caso guardado sea liviano
+function simplifyLine(coords, maxPoints = 150) {
+  if (coords.length <= maxPoints) return coords;
+  const step = (coords.length - 1) / (maxPoints - 1);
+  return Array.from({ length: maxPoints }, (_, i) => coords[Math.round(i * step)]);
+}
+
 // Evalúa rutas alternativas y las penaliza si pasan cerca de novedades activas.
 // incidents: [{ id, lat, lon, summary }]
 async function getBestRoute(origin, destination, incidents = []) {
@@ -73,7 +80,8 @@ async function getBestRoute(origin, destination, incidents = []) {
         duration_min: baseMin + affecting.length * DELAY_PER_INCIDENT_MIN,
         via: summarizeSteps(r),
         incidents_on_route: affecting.map((inc) => ({ id: inc.id, summary: inc.summary })),
-        source: 'OSRM'
+        source: 'OSRM',
+        geometry: simplifyLine(r.geometry.coordinates)
       };
     });
   } catch (error) {
@@ -86,7 +94,8 @@ async function getBestRoute(origin, destination, incidents = []) {
       duration_min: Math.round((km / 25) * 60),
       via: [],
       incidents_on_route: [],
-      source: 'Estimación en línea recta (sin servicio de rutas)'
+      source: 'Estimación en línea recta (sin servicio de rutas)',
+      geometry: [[origin.lon, origin.lat], [destination.lon, destination.lat]]
     }];
   }
 
