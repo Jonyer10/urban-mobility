@@ -1,12 +1,15 @@
-const { GoogleGenAI } = require('@google/genai');
 const { searchLocalServices } = require('../services/localData');
 const { getGeolocationData } = require('../services/geolocation');
+const { getBestRoute } = require('../services/routing');
+const { cacheGet, cacheSet, normalizeKey } = require('../services/db');
+const { generateContent } = require('../services/gemini');
 
-// Inicializar el cliente de Gemini utilizando la variable de entorno
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const ANALYSIS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 class MultiAgentOrchestrator {
-  static async runWorkflow(userText, imageBase64, originLocation) {
+  // options: { destinationLocation?: string, activeIncidents?: [{ id, lat, lon, summary }] }
+  static async runWorkflow(userText, imageBase64, originLocation, options = {}) {
+    const { destinationLocation, activeIncidents = [] } = options;
     const trace = [];
     const logTrace = (msg) => trace.push(msg);
 
@@ -34,13 +37,20 @@ class MultiAgentOrchestrator {
       urgency_level: "Medio",
       summary: userText,
       is_valid_case: true,
+      affects_road: false,
       missing_info_reason: null
     };
 
-    try {
+    const analysisCacheKey = imageBase64 ? null : `analysis:${normalizeKey(userText)}`;
+    const cachedAnalysis = analysisCacheKey ? cacheGet(analysisCacheKey) : null;
+
+    if (cachedAnalysis) {
+      analysisResult = { ...analysisResult, ...cachedAnalysis };
+      logTrace("Agente 1: Análisis reutilizado desde la caché (sin consumir cuota de Gemini).");
+    } else try {
       const contents = [
         {
-          text: `Analiza esta necesidad urbana y responde estrictamente en formato JSON plano (sin bloques de código markdown) con las llaves exactas: "category", "urgency_level", "summary", "is_valid_case" (booleano). Texto del usuario: ${userText}`
+          text: `Analiza esta necesidad urbana y responde estrictamente en formato JSON plano (sin bloques de código markdown) con las llaves exactas: "category" (una de: Movilidad, Infraestructura, Seguridad, Salud, Ambiente, Otra), "urgency_level" (Bajo, Medio o Alto), "summary" (una frase corta), "is_valid_case" (booleano), "affects_road" (booleano: true si reporta una novedad en la vía que puede afectar el tránsito, como accidente, hueco, cierre, obra, semáforo dañado o falta de luz). Texto del usuario: ${userText}`
         }
       ];
 
@@ -53,10 +63,7 @@ class MultiAgentOrchestrator {
         });
       }
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: contents,
-      });
+      const response = await generateContent({ contents });
 
       const responseText = response.text;
       // Expresión regular lineal y segura sin cuantificadores anidados que causen backtracking
@@ -64,6 +71,7 @@ class MultiAgentOrchestrator {
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         analysisResult = { ...analysisResult, ...parsed };
+        if (analysisCacheKey) cacheSet(analysisCacheKey, parsed, ANALYSIS_TTL_MS);
       }
     } catch (modelError) {
       console.warn("Aviso: No se pudo conectar con Gemini o parsear la respuesta, usando análisis por defecto:", modelError.message);
@@ -80,13 +88,53 @@ class MultiAgentOrchestrator {
     const geoData = await getGeolocationData(originLocation);
     logTrace(`Herramienta ejecutada: API Externa de Geolocalizacion consultada. Lat: ${geoData.lat}, Lon: ${geoData.lon}`);
 
-    const recommendations = [
-      `Derivar la solicitud al recurso propio: ${localData[0].name} (Contacto: ${localData[0].contact}).`,
-      `Punto de referencia geolocalizado en: ${geoData.display_name}.`
-    ];
+    const isRoadIncident = analysisResult.affects_road === true;
+    const recommendations = [];
+    if (isRoadIncident) {
+      recommendations.push(`Su reporte fue registrado y notificado a ${localData[0].name} (${localData[0].contact}). No necesita desplazarse hasta allí.`);
+    } else if (!destinationLocation) {
+      recommendations.push(`Derivar la solicitud al recurso propio: ${localData[0].name} (Contacto: ${localData[0].contact}).`);
+    }
+    recommendations.push(`Punto de referencia geolocalizado en: ${geoData.display_name}.`);
 
     const actionResult = `Caso registrado formalmente en el sistema con prioridad ${analysisResult.urgency_level} y asignado a ${localData[0].name}.`;
     logTrace(`Acción ejecutada: ${actionResult}`);
+
+    // --- AGENTE 3: Planificador de Rutas y Alertas ---
+    logTrace("Agente 3 (Planificador de Rutas y Alertas): Evaluando rutas y novedades en la vía.");
+
+    // Destino: el indicado por el usuario; si no hay, el servicio asignado (solo para casos que no son novedades viales)
+    let destination = null;
+    if (destinationLocation) {
+      const destGeo = await getGeolocationData(destinationLocation);
+      destination = { name: destinationLocation, lat: destGeo.lat, lon: destGeo.lon };
+      logTrace(`Herramienta ejecutada: Geolocalización del destino '${destinationLocation}'.`);
+    } else if (!isRoadIncident) {
+      destination = { name: localData[0].name, lat: localData[0].lat, lon: localData[0].lon };
+    }
+
+    const incidentsNearby = [...activeIncidents];
+    if (isRoadIncident) {
+      incidentsNearby.push({ id: 'nuevo', lat: geoData.lat, lon: geoData.lon, summary: analysisResult.summary });
+    }
+    logTrace(`Agente 3: ${incidentsNearby.length} novedad(es) activa(s) consideradas en el cálculo.`);
+
+    let route = null;
+    if (destination) {
+      try {
+        route = await getBestRoute({ lat: geoData.lat, lon: geoData.lon }, destination, incidentsNearby);
+        logTrace(`Herramienta ejecutada: Servicio de rutas (${route.best.source}). Opciones: ${route.alternatives.map((a) => `${a.name} ~${a.duration_min} min`).join(', ')}.`);
+        recommendations.push(`Mejor ruta hacia ${destination.name}: ${route.best.name}, ${route.best.distance_km} km, ~${route.best.duration_min} min${route.best.via.length ? ` (por ${route.best.via.slice(0, 3).join(' → ')})` : ''}.`);
+        recommendations.push(...route.alerts);
+        route.alerts.forEach((a) => logTrace(`Agente 3: Alerta emitida: ${a}`));
+      } catch (routeError) {
+        logTrace(`Agente 3: No fue posible calcular la ruta (${routeError.message}).`);
+      }
+    } else {
+      recommendations.push("Indique su destino para recomendarle la mejor ruta y alertarle de novedades en el camino.");
+      logTrace("Agente 3: Sin destino; se solicita al usuario para calcular rutas.");
+    }
+    recommendations.push("Nota: los tiempos no incluyen tráfico en vivo; los retrasos se estiman a partir de las novedades reportadas en el sistema.");
 
     return {
       analysis: analysisResult,
@@ -94,6 +142,7 @@ class MultiAgentOrchestrator {
       action_result: actionResult,
       location: { lat: geoData.lat, lon: geoData.lon, display_name: geoData.display_name, source: geoData.source },
       services: localData,
+      route,
       trace
     };
   }
