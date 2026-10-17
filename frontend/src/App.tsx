@@ -59,6 +59,7 @@ export default function App() {
   const [copied, setCopied] = useState(false)
   const [filter, setFilter] = useState('')
   const [routeSel, setRouteSel] = useState<number | null>(null)
+  const [altSel, setAltSel] = useState<string | null>(null)
   const [drag, setDrag] = useState(false)
   const [history, setHistory] = useState<CaseSummary[]>([])
   const [dark, setDark] = useState(() => {
@@ -107,6 +108,7 @@ export default function App() {
   const showResult = (r: CaseResult) => {
     setResult(r)
     setRouteSel(null)
+    setAltSel(null)
     setTab('summary')
     setView('results')
   }
@@ -178,6 +180,8 @@ export default function App() {
   const tabIndex = TABS.findIndex((t) => t.id === tab)
   const routes = result?.route_history ?? []
   const activeRoute = routeSel !== null && routes[routeSel] ? routes[routeSel].route : result?.route
+  const routeNames = activeRoute ? [activeRoute.best.name, ...activeRoute.alternatives.map((a) => a.name)] : []
+  const selectedName = altSel && routeNames.includes(altSel) ? altSel : activeRoute?.best.name
 
   return (
     <>
@@ -443,7 +447,7 @@ export default function App() {
                       {routes.map((h, i) => {
                         const on = (routeSel ?? routes.length - 1) === i
                         return (
-                          <button type="button" key={i} className={on ? 'on' : ''} onClick={() => setRouteSel(i)}>
+                          <button type="button" key={i} className={on ? 'on' : ''} onClick={() => { setRouteSel(i); setAltSel(null) }}>
                             <span>{h.source === 'chat' ? 'Chat' : 'Registro'} · {new Date(h.at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
                             <strong>{h.route.origin?.name ?? 'Partida'} → {h.route.destination?.name ?? 'Destino'}</strong>
                             <small>{h.route.best.duration_min} min · {h.route.best.distance_km} km</small>
@@ -455,12 +459,12 @@ export default function App() {
                 )}
                 <div className="grid2 map-grid reveal">
                   {result.location ? (
-                    <div className="card"><MapView location={result.location} route={activeRoute} /></div>
+                    <div className="card"><MapView location={result.location} route={activeRoute} selected={selectedName} onSelect={setAltSel} /></div>
                   ) : (
                     <div className="card empty">Sin ubicación disponible.</div>
                   )}
                   {activeRoute ? (
-                    <RoutePanel route={activeRoute} />
+                    <RoutePanel route={activeRoute} selected={selectedName} onSelect={setAltSel} />
                   ) : (
                     <div className="card empty">
                       <p>No se planeó ninguna ruta.</p>
@@ -476,7 +480,7 @@ export default function App() {
                   key={result.case_id}
                   caseId={result.case_id}
                   history={result.chat_history}
-                  onCaseUpdated={(updated) => { setResult(updated); setRouteSel(null); void refreshHistory() }}
+                  onCaseUpdated={(updated) => { setResult(updated); setRouteSel(null); setAltSel(null); void refreshHistory() }}
                 />
               </div>
 

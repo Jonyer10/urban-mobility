@@ -2,7 +2,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
-const { urbanDatabase, DEFAULT_SERVICES } = require('./localData');
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'urban.db');
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -55,6 +54,17 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_routes_case ON routes (case_id, seq);
 
+  -- Datos propios: catálogo de entidades y servicios urbanos (category 'general' = entidad por defecto)
+  CREATE TABLE IF NOT EXISTS services (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
+    status TEXT,
+    contact TEXT,
+    lat REAL NOT NULL,
+    lon REAL NOT NULL
+  );
+
   -- Conversaciones del chat contextual
   CREATE TABLE IF NOT EXISTS chat_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,33 +76,12 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_chat_case ON chat_messages (case_id);
 
-  -- Catálogo de servicios por categoría (espejo de services/localData.js)
-  CREATE TABLE IF NOT EXISTS services (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    category TEXT NOT NULL,
-    name TEXT NOT NULL,
-    status TEXT,
-    contact TEXT,
-    lat REAL,
-    lon REAL,
-    UNIQUE (category, name)
-  );
 `);
 
 // Columna de categoría en las tablas de historial para consultarlas por categoría
 for (const table of ['trace_events', 'routes', 'chat_messages']) {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
   if (!cols.includes('category')) db.exec(`ALTER TABLE ${table} ADD COLUMN category TEXT`);
-}
-
-// Sincroniza el catálogo con localData.js
-{
-  db.exec('DELETE FROM services');
-  const insService = db.prepare('INSERT INTO services (category, name, status, contact, lat, lon) VALUES (?, ?, ?, ?, ?, ?)');
-  for (const [category, list] of Object.entries(urbanDatabase)) {
-    for (const s of list) insService.run(category, s.name, s.status ?? null, s.contact ?? null, s.lat ?? null, s.lon ?? null);
-  }
-  for (const s of DEFAULT_SERVICES) insService.run('general', s.name, s.status ?? null, s.contact ?? null, s.lat ?? null, s.lon ?? null);
 }
 
 // Columnas legibles en la tabla cases (el detalle completo sigue en la columna JSON "data")
@@ -229,6 +218,19 @@ function migrateLegacyJson() {
 migrateLegacyJson();
 // Resincroniza todos los casos existentes (rellena historial, chat y categoría)
 for (const row of db.prepare('SELECT id, data FROM cases').all()) syncRelational(parseCase(row));
+
+// Carga inicial del catálogo de servicios (solo si la tabla está vacía)
+if (Number(db.prepare('SELECT COUNT(*) AS n FROM services').get().n) === 0) {
+  const seed = path.join(__dirname, '..', 'seeds', 'services.json');
+  if (fs.existsSync(seed)) {
+    const ins = db.prepare('INSERT OR IGNORE INTO services (category, name, status, contact, lat, lon) VALUES (?, ?, ?, ?, ?, ?)');
+    for (const r of JSON.parse(fs.readFileSync(seed, 'utf8'))) ins.run(r.category, r.name, r.status ?? null, r.contact ?? null, r.lat, r.lon);
+  }
+}
+
+function listServices() {
+  return db.prepare('SELECT id, category, name, status, contact, lat, lon FROM services ORDER BY id').all().map((r) => ({ ...r, id: Number(r.id) }));
+}
 stmts.purgeCache.run(Date.now());
 
-module.exports = { createCase, updateCase, getCaseById, listCases, getRecentCases, cacheGet, cacheSet, normalizeKey };
+module.exports = { listServices, createCase, updateCase, getCaseById, listCases, getRecentCases, cacheGet, cacheSet, normalizeKey };

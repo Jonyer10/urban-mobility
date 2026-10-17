@@ -30,11 +30,11 @@ class MultiAgentOrchestrator {
     // Paso 1: análisis. Condición de continuidad: información suficiente.
     const { analysis, rejected } = await analystAgent.run({ userText, imageBase64 }, trace);
     if (rejected) {
-      trace.log({ agent: orchestrator, message: `${orchestrator}: flujo detenido tras el Agente 1 (información insuficiente).` });
+      trace.log({ agent: orchestrator, message: `${orchestrator}: flujo detenido tras el Agente 1 (${analysis.consistency ?? 'caso no válido'}).` });
       return {
         analysis,
         recommendations: [],
-        action_result: 'Caso rechazado por información insuficiente.',
+        action_result: `Caso rechazado: ${analysis.missing_info_reason ?? 'información insuficiente.'}`,
         trace: trace.messages(),
         trace_events: trace.events
       };

@@ -1,0 +1,10 @@
+[
+  { "category": "movilidad", "name": "Estación de Movilidad Sostenible Norte", "status": "Operativo", "contact": "linea-norte@urban.gov", "lat": 4.7110, "lon": -74.0721 },
+  { "category": "movilidad", "name": "Centro de Gestión de Tráfico Vial", "status": "24/7", "contact": "trafico@urban.gov", "lat": 4.6486, "lon": -74.1070 },
+  { "category": "infraestructura", "name": "Cuadrilla de Mantenimiento Vial Zona Centro", "status": "Activo", "contact": "vias@urban.gov", "lat": 4.5981, "lon": -74.0760 },
+  { "category": "infraestructura", "name": "Reporte de Iluminación Pública Municipal", "status": "Abierto", "contact": "luz@urban.gov", "lat": 4.6280, "lon": -74.0650 },
+  { "category": "seguridad", "name": "Estación de Policía Metropolitana Central", "status": "24/7", "contact": "seguridad@urban.gov", "lat": 4.6020, "lon": -74.0700 },
+  { "category": "salud", "name": "Centro de Atención Médica de Urgencias", "status": "24/7", "contact": "salud@urban.gov", "lat": 4.6350, "lon": -74.0830 },
+  { "category": "ambiente", "name": "Unidad de Gestión Ambiental y Residuos", "status": "Disponible", "contact": "ambiente@urban.gov", "lat": 4.6700, "lon": -74.0950 },
+  { "category": "general", "name": "Módulo General de Atención Ciudadana", "status": "Disponible", "contact": "atencion@urban.gov", "lat": 4.6097, "lon": -74.0817 }
+]

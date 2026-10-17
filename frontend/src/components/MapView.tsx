@@ -11,7 +11,14 @@ const pin = (color: string) =>
     iconAnchor: [8, 8],
   })
 
-export function MapView({ location, route }: { location: CaseLocation; route?: RouteResult | null }) {
+interface Props {
+  location: CaseLocation
+  route?: RouteResult | null
+  selected?: string
+  onSelect?: (name: string) => void
+}
+
+export function MapView({ location, route, selected, onSelect }: Props) {
   const el = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -33,17 +40,22 @@ export function MapView({ location, route }: { location: CaseLocation; route?: R
         bounds.extend([route.origin.lat, route.origin.lon])
       }
       const toLatLng = (g: [number, number][]) => g.map(([lon, lat]) => [lat, lon] as [number, number])
-      route.alternatives.forEach((alt) => {
-        if (alt.geometry && alt.name !== route.best.name) {
-          L.polyline(toLatLng(alt.geometry), { color: '#94a3b8', weight: 4, opacity: 0.7, dashArray: '6 8' })
-            .addTo(map)
-            .bindTooltip(`${alt.name} · ~${alt.duration_min} min`)
-        }
-      })
-      if (route.best.geometry) {
-        const line = L.polyline(toLatLng(route.best.geometry), { color: '#6366f1', weight: 6 })
+      const active = selected ?? route.best.name
+      const options = [route.best, ...route.alternatives.filter((a) => a.name !== route.best.name)].filter((o) => o.geometry)
+
+      // Primero las rutas no seleccionadas (atenuadas, clicables) y encima la seleccionada
+      options.filter((o) => o.name !== active).forEach((o) => {
+        L.polyline(toLatLng(o.geometry!), { color: '#94a3b8', weight: 5, opacity: 0.45, dashArray: '8 10' })
           .addTo(map)
-          .bindTooltip(`${route.best.name} · ~${route.best.duration_min} min`)
+          .bindTooltip(`${o.name} · ~${o.duration_min} min (clic para ver)`, { sticky: true })
+          .on('click', () => onSelect?.(o.name))
+      })
+      const chosen = options.find((o) => o.name === active)
+      if (chosen) {
+        L.polyline(toLatLng(chosen.geometry!), { color: '#ffffff', weight: 11, opacity: 0.9 }).addTo(map)
+        const line = L.polyline(toLatLng(chosen.geometry!), { color: '#4f46e5', weight: 7 })
+          .addTo(map)
+          .bindTooltip(`${chosen.name} · ~${chosen.duration_min} min`, { sticky: true })
         bounds.extend(line.getBounds())
       }
       if (route.destination) {
@@ -60,7 +72,7 @@ export function MapView({ location, route }: { location: CaseLocation; route?: R
     return () => {
       map.remove()
     }
-  }, [location, route])
+  }, [location, route, selected, onSelect])
 
   return (
     <div className="map">
