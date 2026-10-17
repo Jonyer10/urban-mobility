@@ -2,9 +2,18 @@ import { ArrowRight, CheckCircle2, Clock, Flag, MapPin, Route as RouteIcon, Tria
 import type { RouteOption, RouteResult } from '../types'
 import './panels.css'
 
-function RouteRow({ r, best }: { r: RouteOption; best?: boolean }) {
+interface RowProps {
+  r: RouteOption
+  best?: boolean
+  selected: boolean
+  dimmed: boolean
+  onSelect: () => void
+}
+
+function RouteRow({ r, best, selected, dimmed, onSelect }: RowProps) {
   return (
-    <div className={`route-row${best ? ' best' : ''}`}>
+    <button type="button" aria-pressed={selected} onClick={onSelect}
+      className={`route-row${best ? ' best' : ''}${selected ? ' sel' : ''}${dimmed ? ' dim' : ''}`}>
       <div className="route-head">
         <strong>{r.name}</strong>
         {best && <span className="badge bajo">Recomendada</span>}
@@ -21,11 +30,13 @@ function RouteRow({ r, best }: { r: RouteOption; best?: boolean }) {
       ) : (
         <small className="ok"><CheckCircle2 size={14} /> Sin novedades activas en este trayecto</small>
       )}
-    </div>
+      {!selected && <small className="route-hint">Clic para ver en el mapa</small>}
+    </button>
   )
 }
 
-export function RoutePanel({ route }: { route: RouteResult }) {
+export function RoutePanel({ route, selected, onSelect }: { route: RouteResult; selected?: string; onSelect?: (name: string) => void }) {
+  const active = selected ?? route.best.name
   const others = route.alternatives.filter((a) => a.name !== route.best.name)
   return (
     <section className="card fade">
@@ -38,11 +49,11 @@ export function RoutePanel({ route }: { route: RouteResult }) {
       <p className="route-trip">
         <MapPin size={15} /> {route.origin?.name ?? 'Partida'} <ArrowRight size={14} /> <Flag size={15} /> {route.destination?.name ?? 'Destino'}
       </p>
-      <RouteRow r={route.best} best />
+      <RouteRow r={route.best} best selected={active === route.best.name} dimmed={active !== route.best.name} onSelect={() => onSelect?.(route.best.name)} />
       {others.length > 0 && (
         <>
           <h3 className="sub">Alternativas</h3>
-          {others.map((a) => <RouteRow key={a.name} r={a} />)}
+          {others.map((a) => <RouteRow key={a.name} r={a} selected={active === a.name} dimmed={active !== a.name} onSelect={() => onSelect?.(a.name)} />)}
         </>
       )}
     </section>

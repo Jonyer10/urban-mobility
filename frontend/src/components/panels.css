@@ -60,3 +60,11 @@ h3.sub { font-size: .85rem; color: var(--muted); margin: 1rem 0 .5rem; text-tran
 
 /* Accesibilidad */
 button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+
+/* Rutas clicables */
+button.route-row { width: 100%; display: block; text-align: left; background: var(--surface); color: var(--text); font-weight: 400; cursor: pointer; transition: opacity .35s var(--ease), border-color .3s, background .3s, box-shadow .3s, transform .3s var(--ease); }
+button.route-row:hover:not(:disabled) { box-shadow: 0 4px 14px rgba(79, 70, 229, .18); border-color: var(--primary); transform: translateY(-1px); }
+button.route-row.sel { border-color: var(--primary); background: var(--primary-soft); box-shadow: 0 0 0 2px rgba(79, 70, 229, .25); }
+button.route-row.dim { opacity: .55; }
+button.route-row.dim:hover { opacity: 1; }
+.route-hint { display: block; margin-top: .3rem; color: var(--primary); font-size: .72rem; }

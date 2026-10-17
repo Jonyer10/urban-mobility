@@ -3,7 +3,7 @@ const cors = require('cors');
 require('dotenv').config();
 const { MultiAgentOrchestrator, describeAgents } = require('./agents/orchestrator');
 const { runChatAgent } = require('./agents/chatAgent');
-const { createCase, updateCase, getCaseById, listCases, getRecentCases, cacheGet, cacheSet, normalizeKey } = require('./services/db');
+const { listServices, createCase, updateCase, getCaseById, listCases, getRecentCases, cacheGet, cacheSet, normalizeKey } = require('./services/db');
 const { detectMime } = require('./services/image');
 
 const app = express();
@@ -165,6 +165,9 @@ Dispones de herramientas: buscar_servicios, calcular_ruta, consultar_novedades y
     return res.status(500).json({ error: "Error al procesar la consulta en el chat." });
   }
 });
+
+// Endpoint: catálogo de servicios (datos propios guardados en la base de datos)
+app.get('/api/services', (req, res) => res.json(listServices()));
 
 // Endpoint: Descripción de los agentes (responsabilidad, entradas, herramientas y salidas)
 app.get('/api/agents', (req, res) => res.json(describeAgents()));

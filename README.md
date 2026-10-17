@@ -121,6 +121,7 @@ Además del JSON completo del caso (columna `data`), la base replica la informac
 | `chat_messages` | Preguntas del chat con su respuesta y herramientas usadas |
 | `routes` | Rutas calculadas por caso: origen, destino, distancia, tiempo, vías y alertas |
 | `cache` | Respuestas reutilizadas para no consumir cuota del modelo |
+| `services` | **Datos propios:** catálogo de entidades y servicios urbanos (categoría, nombre, estado, contacto, coordenadas). Se carga una vez desde `backend/seeds/services.json` y desde entonces se consulta únicamente en la base |
 
 **Validación del caso (Agente 1):** además de rechazar descripciones demasiado cortas, Gemini clasifica la entrada como `coherente`, `insuficiente`, `contradictoria` o `no_corresponde` (por ejemplo, una imagen que no coincide con el texto). Si no es coherente, el flujo se detiene y se explica el motivo.
 
@@ -169,7 +170,7 @@ urban-mobility/
 │   │   └── chatAgent.js         # Agente 4 (herramientas y acciones)
 │   ├── services/
 │   │   ├── gemini.js            # Cliente Gemini con respaldo entre modelos
-│   │   ├── localData.js         # Datos propios de servicios urbanos
+│   │   ├── localData.js         # Consulta del catálogo de servicios (tabla services)
 │   │   ├── geolocation.js       # Nominatim y Overpass
 │   │   ├── routing.js           # OSRM y evaluación de novedades
 │   │   ├── trace.js             # Trazabilidad estructurada
@@ -252,6 +253,10 @@ Lista los casos persistidos, del más reciente al más antiguo (`?limit=50`, má
 
 ### `GET /api/cases/:id`
 Recupera el caso completo: resultado, acción, `trace_log`, `trace_events` y `chat_history`.
+
+### `GET /api/services`
+
+Catálogo de servicios y entidades guardado en la base de datos (datos propios).
 
 ### `GET /api/agents`
 Describe cada agente: responsabilidad, entradas, herramientas y salidas.

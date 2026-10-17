@@ -54,6 +54,17 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_routes_case ON routes (case_id, seq);
 
+  -- Datos propios: catálogo de entidades y servicios urbanos (category 'general' = entidad por defecto)
+  CREATE TABLE IF NOT EXISTS services (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
+    status TEXT,
+    contact TEXT,
+    lat REAL NOT NULL,
+    lon REAL NOT NULL
+  );
+
   -- Conversaciones del chat contextual
   CREATE TABLE IF NOT EXISTS chat_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -183,10 +194,23 @@ function migrateLegacyJson() {
 }
 
 migrateLegacyJson();
+
+// Carga inicial del catálogo de servicios (solo si la tabla está vacía)
+if (Number(db.prepare('SELECT COUNT(*) AS n FROM services').get().n) === 0) {
+  const seed = path.join(__dirname, '..', 'seeds', 'services.json');
+  if (fs.existsSync(seed)) {
+    const ins = db.prepare('INSERT OR IGNORE INTO services (category, name, status, contact, lat, lon) VALUES (?, ?, ?, ?, ?, ?)');
+    for (const r of JSON.parse(fs.readFileSync(seed, 'utf8'))) ins.run(r.category, r.name, r.status ?? null, r.contact ?? null, r.lat, r.lon);
+  }
+}
+
+function listServices() {
+  return db.prepare('SELECT id, category, name, status, contact, lat, lon FROM services ORDER BY id').all().map((r) => ({ ...r, id: Number(r.id) }));
+}
 // Rellena las tablas con los casos creados antes de existir trace_events
 for (const row of db.prepare('SELECT id, data FROM cases').all()) {
   if (!db.prepare('SELECT 1 FROM trace_events WHERE case_id = ? LIMIT 1').get(row.id) || (JSON.parse(row.data).route && !db.prepare('SELECT 1 FROM routes WHERE case_id = ? LIMIT 1').get(row.id))) syncRelational(parseCase(row));
 }
 stmts.purgeCache.run(Date.now());
 
-module.exports = { createCase, updateCase, getCaseById, listCases, getRecentCases, cacheGet, cacheSet, normalizeKey };
+module.exports = { listServices, createCase, updateCase, getCaseById, listCases, getRecentCases, cacheGet, cacheSet, normalizeKey };
